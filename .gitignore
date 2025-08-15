@@ -1,0 +1,62 @@
+# ----------------------------
+# Python
+# ----------------------------
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+env/
+venv/
+*.egg-info/
+dist/
+build/
+
+# ----------------------------
+# Environment variables
+# ----------------------------
+.env
+
+# ----------------------------
+# Airflow
+# ----------------------------
+airflow/logs/
+airflow/__pycache__/
+airflow/dags/__pycache__/
+airflow/plugins/__pycache__/
+
+# SQLite database if used
+airflow/airflow.db
+
+# ----------------------------
+# DBT
+# ----------------------------
+dbt/my_project/target/
+dbt/my_project/dbt_modules/
+dbt/my_project/__pycache__/
+
+# ----------------------------
+# Docker
+# ----------------------------
+docker-compose.override.yml
+*.log
+
+# ----------------------------
+# PostgreSQL data
+# ----------------------------
+postgres_data/
+*.backup
+postgres/data
+
+# ----------------------------
+# IDEs
+# ----------------------------
+.vscode/
+.idea/
+
+# ----------------------------
+# Misc
+# ----------------------------
+*.swp
+*.swo
+.DS_Store
