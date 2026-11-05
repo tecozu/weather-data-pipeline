@@ -1,0 +1,15 @@
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = ["docker"]  # upstream Superset helper scripts
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["weather_ingestion"]
+known-third-party = ["airflow", "docker"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["ingestion"]

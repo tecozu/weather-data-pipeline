@@ -1,12 +1,12 @@
-my_project:
+weather:
+  target: dev
   outputs:
     dev:
-      dbname: db
-      host: db
-      pass: db_password
-      port: 5432
-      schema: dev
-      threads: 4
       type: postgres
-      user: db_user
-  target: dev
+      host: "{{ env_var('POSTGRES_HOST', 'localhost') }}"
+      port: "{{ env_var('POSTGRES_PORT', '5432') | int }}"
+      dbname: "{{ env_var('POSTGRES_DB', 'weather') }}"
+      user: "{{ env_var('POSTGRES_USER', 'weather') }}"
+      pass: "{{ env_var('POSTGRES_PASSWORD') }}"
+      schema: analytics
+      threads: 4

@@ -60,3 +60,9 @@ postgres/data
 *.swp
 *.swo
 .DS_Store
+
+# dbt
+dbt/target/
+dbt/logs/
+dbt/.user.yml
+logs/

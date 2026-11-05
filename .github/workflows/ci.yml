@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: weather
+          POSTGRES_USER: weather
+          POSTGRES_PASSWORD: ci-only-password
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U weather" --health-interval 5s --health-retries 10
+    env:
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: weather
+      POSTGRES_USER: weather
+      POSTGRES_PASSWORD: ci-only-password
+      WEATHER_CITIES: "Rio de Janeiro;Sao Paulo;Recife"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-dev.txt
+
+      - name: Lint
+        run: ruff check . && ruff format --check .
+
+      - name: Unit tests
+        run: pytest -q
+
+      - name: Ingest 72 hours of mock observations (twice, to prove idempotency)
+        run: |
+          python ingestion/weather_ingestion.py backfill-mock 72
+          test "$(python ingestion/weather_ingestion.py backfill-mock 72)" = "0"
+
+      - name: dbt build (models + tests), then an incremental run
+        working-directory: dbt
+        run: |
+          dbt build --profiles-dir .
+          dbt build --profiles-dir .
+
+      - name: Compose file is valid
+        run: cp .env.example .env && docker compose config --quiet

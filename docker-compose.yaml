@@ -1,140 +1,80 @@
-x-superset-user: &superset-user root
-x-superset-volumes: &superset-volumes
-  # /app/pythonpath_docker will be appended to the PYTHONPATH in the final container
-  - ./docker:/app/docker
- #- ./superset:/app/superset
-  - ./docker/superset_config.py:/app/pythonpath/superset_config.py
+# All credentials come from .env (copy .env.example). Nothing secret is committed.
+x-superset-common: &superset-common
+  image: apache/superset:3.0.0-py310
+  user: root
+  env_file: [.env]
+  volumes:
+    - ./docker:/app/docker
+    - ./docker/superset_config.py:/app/pythonpath/superset_config.py
+  networks: [weather-net]
 
 services:
-  db: 
-    container_name: postgres_container
-    image: postgres:14.17
-    ports:
-      - 5000:5432
-    
-    # Environment variables for PostgreSQL
+  db:
+    image: postgres:16
+    container_name: weather_db
     environment:
-      POSTGRES_USER: db_user
-      POSTGRES_PASSWORD: db_password
-      POSTGRES_DB: db
-    
-    # Setting volumes for data persistence on local and initialization scripts
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports: ["5432:5432"]
     volumes:
-      - ./postgres/data:/var/lib/postgresql/data
-      - ./postgres/airflow_init.sql:/docker-entrypoint-initdb.d/airflow_init.sql
-      - ./postgres/superset_init.sql:/docker-entrypoint-initdb.d/superset_init.sql
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres/init.sh:/docker-entrypoint-initdb.d/init.sh:ro
+    env_file: [.env]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      retries: 10
+    networks: [weather-net]
 
-    # Using the bridge network to allow communication between containers
-    networks:
-      - my-network
-
-  af:
-    container_name: airflow_container
+  airflow:
     image: apache/airflow:3.0.3
-    ports:
-      - 8080:8080
-    #Overriding airflow database connection string to use PostgreSQL with his own credentials
+    container_name: weather_airflow
+    ports: ["8080:8080"]
+    env_file: [.env]
     environment:
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@db:5432/airflow_db
-    
-    # Setting volumes to container recognize dags and api_request folder
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${AIRFLOW_DB_USER}:${AIRFLOW_DB_PASSWORD}@db:5432/airflow_db
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      POSTGRES_HOST: db
+      DOCKER_NETWORK: weather-data-pipeline_weather-net
     volumes:
       - ./airflow/dags:/opt/airflow/dags
-      - ./api-request:/opt/airflow/api_request
-      -  /var/run/docker.sock:/var/run/docker.sock
-    
-    # Using the airflow user and group to avoid permission issues
-    group_add:
-      - '1000'
-
-    # Make sure the Airflow container starts after the database is ready
+      - ./ingestion:/opt/airflow/ingestion
+      - /var/run/docker.sock:/var/run/docker.sock
+    group_add: ["${DOCKER_GID:-0}"]
     depends_on:
-      - db
-
-    # Using the bridge network to allow communication between containers
-    networks:
-      - my-network
-
-    # Command to initialize the database and start Airflow in standalone mode
-    command : >
-      bash -c "airflow db migrate && airflow standalone"
-
-      
-  dbt:
-    container_name: dbt_container
-    image: ghcr.io/dbt-labs/dbt-postgres:1.9.latest
-    volumes:
-      - ./dbt/my_project:/usr/app
-      - ./dbt:/root/.dbt
-    working_dir: /usr/app
-    environment:
-      DBT_PROFILES_DIR: "/root/.dbt"
-    depends_on:
-      - db
-    networks:
-      - my-network
-    command: run  
-
-  superset:
-    env_file:
-      - path: docker/.env # default
-        required: true
-    image: apache/superset:3.0.0-py310
-    container_name: superset_app
-    command: ["/app/docker/docker-bootstrap.sh", "app"]
-    restart: unless-stopped
-    ports:
-      - 8088:8088
-    user: *superset-user
-    depends_on:
-      superset-init:
-        condition: service_completed_successfully
-    volumes: *superset-volumes
-    environment:
-      DATABASE_DB: "superset_db"  
-      SUPERSET_LOG_LEVEL: "${SUPERSET_LOG_LEVEL:-INFO}"  
-    networks:
-      - my-network
+      db: { condition: service_healthy }
+    command: bash -c "airflow db migrate && airflow standalone"
+    networks: [weather-net]
 
   superset-init:
-    image: apache/superset:3.0.0-py310
-    container_name: superset_init
+    <<: *superset-common
+    container_name: weather_superset_init
     command: ["/app/docker/docker-init.sh"]
-    env_file:
-      - path: docker/.env # default
-        required: true
     depends_on:
-      db:
-        condition: service_started
-      redis:
-        condition: service_started
-    user: *superset-user
-    volumes: *superset-volumes
-    environment:
-      DATABASE_DB: "superset_db"  
-      SUPERSET_LOG_LEVEL: "${SUPERSET_LOG_LEVEL:-INFO}"  
-      SUPERSET_LOAD_EXEMPLES: "no"
-    healthcheck:
-      disable: true
-    networks:
-      - my-network
+      db: { condition: service_healthy }
+      redis: { condition: service_started }
+
+  superset:
+    <<: *superset-common
+    container_name: weather_superset
+    command: ["/app/docker/docker-bootstrap.sh", "app"]
+    restart: unless-stopped
+    ports: ["8088:8088"]
+    depends_on:
+      superset-init: { condition: service_completed_successfully }
 
   redis:
     image: redis:7
-    container_name: superset_cache
+    container_name: weather_redis
     restart: unless-stopped
-    ports:
-      - "127.0.0.1:6379:6379"
-    volumes:
-      - redis:/data
-    networks:
-      - my-network
+    volumes: [redis:/data]
+    networks: [weather-net]
+
 networks:
-  my-network:
+  weather-net:
     driver: bridge
 
 volumes:
+  pgdata:
   redis:
-    external: false
-
-  

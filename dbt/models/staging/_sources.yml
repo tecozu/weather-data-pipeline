@@ -1,0 +1,15 @@
+version: 2
+
+sources:
+  - name: raw
+    schema: raw
+    tables:
+      - name: weather_observations
+        description: One row per city and observation time, as landed by the ingestion job.
+        loaded_at_field: ingested_at
+        freshness:
+          warn_after: { count: 3, period: hour }
+          error_after: { count: 12, period: hour }
+        columns:
+          - name: payload
+            description: Full API response (JSONB) kept for replay and new fields.

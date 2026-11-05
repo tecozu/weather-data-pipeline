@@ -1,0 +1,40 @@
+version: 2
+
+models:
+  - name: stg_weather_observations
+    columns:
+      - name: city
+        data_tests: [not_null]
+      - name: observed_at_local
+        data_tests: [not_null]
+      - name: temperature_c
+        description: Plausibility range for Brazilian cities.
+        data_tests:
+          - expression_is_true:
+              arguments:
+                expression: "temperature_c between -10 and 50"
+      - name: humidity_pct
+        data_tests:
+          - expression_is_true:
+              arguments:
+                expression: "humidity_pct between 0 and 100"
+
+  - name: fct_hourly_weather
+    description: Hourly grain per city (incremental).
+    data_tests:
+      - expression_is_true:
+          arguments:
+            expression: "observations >= 1"
+    columns:
+      - name: observed_hour_local
+        data_tests: [not_null]
+
+  - name: daily_weather_summary
+    description: Daily min/max/avg per city plus data coverage (hours observed / 24).
+    data_tests:
+      - expression_is_true:
+          arguments:
+            expression: "min_temperature_c <= avg_temperature_c and avg_temperature_c <= max_temperature_c"
+      - expression_is_true:
+          arguments:
+            expression: "coverage_ratio <= 1"
